@@ -31,7 +31,6 @@ class RequestStream extends TransformStream {
     super({
       async transform(line: string, controller) {
         const [command, ...args] = line.split(" ");
-        console.info(`[C] ${line}`);
         switch (command.toUpperCase()) {
           case "AUTHINFO": {
             // Skips authentication if already authenticated, or no htpasswd is provided.
@@ -80,7 +79,6 @@ class ResponseStream extends TransformStream {
   constructor() {
     super({
       transform(line: string, controller) {
-        console.info(`[S] ${line}`);
         const [status, ..._rest] = line.split(" ");
 
         const statusText = ResponseCodes[Number(status)];
@@ -98,19 +96,22 @@ class ResponseStream extends TransformStream {
  * Pipes lines from source to target.
  */
 function pipe(source: Deno.Conn, target: Deno.Conn, stream: TransformStream) {
-  source.readable
+  return source.readable
     .pipeThrough(new TextDecoderStream())
     .pipeThrough(new TextLineStream())
     .pipeThrough(stream)
     .pipeThrough(new TextEncoderStream())
-    .pipeTo(target.writable);
+    .pipeTo(target.writable)
+    .catch((_error) => {
+      // Ignore errors that occur when one end of the pipe is closed.
+    });
 }
 
 async function handle(conn: Deno.Conn, options: ConnectOptions) {
   const remoteAddr = conn.remoteAddr as Deno.NetAddr;
   console.log(`${remoteAddr.hostname}:${remoteAddr.port} connected`);
 
-  let server;
+  let server: Deno.Conn;
 
   if (options.caCerts) {
     server = await Deno.connectTls(options);
