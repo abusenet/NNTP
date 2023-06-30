@@ -7,8 +7,11 @@
  * $ nntp.ts --address=news.localhost:119 --hostname=news.php.net --port=119
  */
 import { parse } from "https://deno.land/std@0.192.0/flags/mod.ts";
-import { TextLineStream } from "https://deno.land/std@0.192.0/streams/text_line_stream.ts";
+import { startsWith } from "https://deno.land/std@0.192.0/bytes/starts_with.ts";
 import { validate } from "https://deno.land/x/htpasswd/main.ts";
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 type ListenOptions = {
   address?: string;
@@ -29,36 +32,34 @@ class RequestStream extends TransformStream {
     };
 
     super({
-      async transform(line: string, controller) {
-        const [command, ...args] = line.split(" ");
-        switch (command.toUpperCase()) {
-          case "AUTHINFO": {
-            // Skips authentication if already authenticated, or no htpasswd is provided.
-            if (authinfo.authenticated) {
-              break;
-            }
-
-            const type = args[0].toUpperCase();
-
-            if (type === "USER") {
-              authinfo.user = args[1];
-              line = `AUTHINFO USER ${user}`; // Authenticates using the provider's username.
-            } else if (type === "PASS") {
-              if (await validate(htpasswd!, authinfo.user, args[1])) {
-                authinfo.authenticated = true;
-                line = `AUTHINFO PASS ${pass}`; // Authenticates using the provider's password.
-              }
-
-              // Otherwise, authenticates with the provider directly using the
-              // provided credentials.
-            }
-            break;
+      async transform(line: Uint8Array, controller) {
+        if (
+          startsWith(line, encoder.encode("AUTHINFO")) ||
+          startsWith(line, encoder.encode("authinfo"))
+        ) {
+          // Skips authentication if already authenticated, or no htpasswd is provided.
+          if (authinfo.authenticated) {
+            controller.enqueue(line);
+            return;
           }
-          default:
-            break;
+
+          const [, type, arg] = decoder.decode(line).trim().split(" ");
+
+          if (type.toUpperCase() === "USER") {
+            authinfo.user = arg;
+            line = encoder.encode(`AUTHINFO USER ${user}\r\n`); // Authenticates using the provider's username.
+          } else if (type.toUpperCase() === "PASS") {
+            if (await validate(htpasswd!, authinfo.user, arg)) {
+              authinfo.authenticated = true;
+              line = encoder.encode(`AUTHINFO PASS ${pass}\r\n`); // Authenticates using the provider's password.
+            }
+
+            // Otherwise, authenticates with the provider directly using the
+            // provided credentials.
+          }
         }
 
-        controller.enqueue(`${line}\r\n`);
+        controller.enqueue(line);
       },
     });
   }
@@ -78,15 +79,14 @@ const ResponseCodes: Record<number, string> = {
 class ResponseStream extends TransformStream {
   constructor() {
     super({
-      transform(line: string, controller) {
-        const [status, ..._rest] = line.split(" ");
-
+      transform(line: Uint8Array, controller) {
+        const status = decoder.decode(line.subarray(0, 3));
         const statusText = ResponseCodes[Number(status)];
         if (statusText) {
-          line = `${status} ${statusText}`;
+          line = encoder.encode(`${status} ${statusText}\r\n`);
         }
 
-        controller.enqueue(`${line}\r\n`);
+        controller.enqueue(line);
       },
     });
   }
@@ -97,10 +97,7 @@ class ResponseStream extends TransformStream {
  */
 function pipe(source: Deno.Conn, target: Deno.Conn, stream: TransformStream) {
   return source.readable
-    .pipeThrough(new TextDecoderStream())
-    .pipeThrough(new TextLineStream())
     .pipeThrough(stream)
-    .pipeThrough(new TextEncoderStream())
     .pipeTo(target.writable)
     .catch((_error) => {
       // Ignore errors that occur when one end of the pipe is closed.
