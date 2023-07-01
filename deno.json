@@ -1,5 +1,10 @@
 {
   "tasks": {
-    "start": "deno run --allow-net --allow-env --allow-read --watch main.ts"
+    "start": "deno run --allow-net --allow-env --allow-read --watch main.ts",
+    "compile": "deno task compile:x86_64-unknown-linux-gnu && deno task compile:x86_64-pc-windows-msvc && deno task compile:x86_64-apple-darwin && deno task compile:aarch64-apple-darwin",
+    "compile:x86_64-unknown-linux-gnu": "deno compile --target x86_64-unknown-linux-gnu --output dist/nntp-x86_64-unknown-linux-gnu --allow-net --allow-env --allow-read main.ts",
+    "compile:x86_64-pc-windows-msvc": "deno compile --target x86_64-pc-windows-msvc --output dist/nntp-x86_64-pc-windows-msvc.exe --allow-net --allow-env --allow-read main.ts",
+    "compile:x86_64-apple-darwin": "deno compile --target x86_64-apple-darwin --output dist/nntp-x86_64-apple-darwin --allow-net --allow-env --allow-read main.ts",
+    "compile:aarch64-apple-darwin": "deno compile --target aarch64-apple-darwin --output dist/nntp-aarch64-apple-darwin --allow-net --allow-env --allow-read main.ts"
   }
 }

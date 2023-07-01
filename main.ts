@@ -8,7 +8,7 @@
  */
 import { parse } from "https://deno.land/std@0.192.0/flags/mod.ts";
 import { startsWith } from "https://deno.land/std@0.192.0/bytes/starts_with.ts";
-import { validate } from "https://deno.land/x/htpasswd/main.ts";
+import { validate } from "https://deno.land/x/htpasswd@v0.2.0/main.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

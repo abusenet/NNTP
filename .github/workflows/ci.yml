@@ -1,0 +1,73 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# This workflow will install Deno then run Deno lint and test.
+# For more information see: https://github.com/denoland/setup-deno
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [ x86_64-unknown-linux-gnu, x86_64-pc-windows-msvc, x86_64-apple-darwin, aarch64-apple-darwin ]
+
+    # Set DENO_DIR to an absolute or relative path on the runner.
+    env:
+      DENO_DIR: .cache
+
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Cache Deno dependencies 
+        uses: actions/cache@v2
+        with:
+          path: ${{ env.DENO_DIR }}
+          key: ${{ secrets.CACHE_VERSION }}-${{ hashFiles('deno.lock') }}
+  
+      - name: Setup repo
+        uses: actions/checkout@v3
+
+      - name: Setup Deno
+        # uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@004814556e37c54a2f6e31384c9e18e983317366
+        with:
+          deno-version: v1.x
+
+      # Check if the code is formatted according to Deno's default
+      # formatting conventions.
+      - name: Verify formatting
+        run: deno fmt --check
+
+      # Scan the code for syntax errors and style issues.
+      - name: Run linter
+        run: deno lint
+
+      # Run all test files in the repository and collect code coverage. The example
+      # runs with all permissions, but it is recommended to run with the minimal permissions your program needs (for example --allow-read).
+      - name: Run tests
+        run: deno test -A --unstable
+
+      - name: Compile
+        run: deno task compile:${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: nntp
+          path: dist
