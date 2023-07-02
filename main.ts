@@ -7,7 +7,6 @@
  * $ nntp.ts --address=news.localhost:119 --hostname=news.php.net --port=119
  */
 import { parse } from "https://deno.land/std@0.192.0/flags/mod.ts";
-import { startsWith } from "https://deno.land/std@0.192.0/bytes/starts_with.ts";
 import { validate } from "https://deno.land/x/htpasswd@v0.2.0/main.ts";
 
 const encoder = new TextEncoder();
@@ -24,6 +23,59 @@ type ConnectOptions = {
   htpasswd?: string;
 } & Deno.ConnectTlsOptions;
 
+const COMMANDS = [
+  "ARTICLE",
+  "AUTHINFO USER",
+  "AUTHINFO PASS",
+  "BODY",
+  "CAPABILITIES",
+  "DATE",
+  "GROUP",
+  "HDR",
+  "HEAD",
+  "HELP",
+  "IHAVE",
+  "LAST",
+  "LIST",
+  "LIST ACTIVE.TIMES",
+  "LIST ACTIVE",
+  "LIST DISTRIB.PATS",
+  "LIST HEADERS",
+  "LIST NEWSGROUPS",
+  "LIST OVERVIEW.FMT",
+  "LISTGROUP",
+  "MODE READER",
+  "NEWGROUPS",
+  "NEWNEWS",
+  "NEXT",
+  "OVER",
+  "POST",
+  "QUIT",
+  "STAT",
+  "SLAVE",
+].sort().reduce((commands: Uint8Array[], command: string) => {
+  commands.push(encoder.encode(command.toUpperCase()));
+  commands.push(encoder.encode(command.toLowerCase()));
+  return commands;
+}, []);
+
+/**
+ * Parses a possible command from a line.
+ *
+ * @param {Uint8Array} line - The line to parse.
+ * @returns the command in uppercase, or null if no command is found.
+ */
+function parseCommand(line: Uint8Array): string | null {
+  let result = null;
+  for (const command of COMMANDS) {
+    if (command.every((byte, i) => byte === line[i])) {
+      result = decoder.decode(command).trim().toUpperCase();
+    }
+  }
+
+  return result;
+}
+
 class RequestStream extends TransformStream {
   constructor({ user, pass, htpasswd }: ConnectOptions) {
     const authinfo = {
@@ -33,22 +85,21 @@ class RequestStream extends TransformStream {
 
     super({
       async transform(line: Uint8Array, controller) {
-        if (
-          startsWith(line, encoder.encode("AUTHINFO")) ||
-          startsWith(line, encoder.encode("authinfo"))
-        ) {
+        const command = parseCommand(line);
+
+        if (command?.includes("AUTHINFO ")) {
           // Skips authentication if already authenticated, or no htpasswd is provided.
           if (authinfo.authenticated) {
             controller.enqueue(line);
             return;
           }
 
-          const [, type, arg] = decoder.decode(line).trim().split(" ");
+          const arg = decoder.decode(line).trim().split(" ")[2];
 
-          if (type.toUpperCase() === "USER") {
+          if (command === "AUTHINFO USER") {
             authinfo.user = arg;
             line = encoder.encode(`AUTHINFO USER ${user}\r\n`); // Authenticates using the provider's username.
-          } else if (type.toUpperCase() === "PASS") {
+          } else if (command === "AUTHINFO PASS") {
             if (await validate(htpasswd!, authinfo.user, arg)) {
               authinfo.authenticated = true;
               line = encoder.encode(`AUTHINFO PASS ${pass}\r\n`); // Authenticates using the provider's password.
