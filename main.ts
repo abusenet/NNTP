@@ -6,7 +6,8 @@
  * ```
  * $ nntp.ts --address=news.localhost:119 --hostname=news.php.net --port=119
  */
-import { parse } from "https://deno.land/std@0.192.0/flags/mod.ts";
+import { parse } from "https://deno.land/std@0.196.0/flags/mod.ts";
+import { retry } from "https://deno.land/std@0.196.0/async/retry.ts";
 import { validate } from "https://deno.land/x/htpasswd@v0.2.0/main.ts";
 
 const encoder = new TextEncoder();
@@ -161,11 +162,19 @@ async function handle(conn: Deno.Conn, options: ConnectOptions) {
 
   let server: Deno.Conn;
 
-  if (options.caCerts) {
-    server = await Deno.connectTls(options);
-  } else {
-    server = await Deno.connect(options);
-  }
+  await retry(() => {
+    if (options.caCerts) {
+      server = await Deno.connectTls(options);
+    } else {
+      server = await Deno.connect(options);
+    }
+  }, {
+    multiplier: 2,
+    maxTimeout: 60000,
+    maxAttempts: 5,
+    minTimeout: 100,
+    jitter: 1,
+  });
 
   // Sets up two-way pipeline
   pipe(server, conn, new ResponseStream());
