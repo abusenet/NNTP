@@ -162,7 +162,7 @@ async function handle(conn: Deno.Conn, options: ConnectOptions) {
 
   let server: Deno.Conn;
 
-  await retry(() => {
+  await retry(async () => {
     if (options.caCerts) {
       server = await Deno.connectTls(options);
     } else {
